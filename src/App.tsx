@@ -1,127 +1,123 @@
 import "./styles.css";
+import { StationProvider, useStation, type ViewKey } from "./fumigation/station";
+import { ComponentList } from "./views/ComponentList";
+import { RegisterView } from "./views/RegisterView";
+import { QueueView } from "./views/QueueView";
+import { LedgerView } from "./views/LedgerView";
+import { GraphView } from "./views/GraphView";
 
-const project = {
-  "sourceNo": 8,
-  "id": "hxyfront-62013",
-  "port": 62013,
-  "title": "木结构榫卯构件测绘",
-  "domain": "古建木结构",
-  "prompt": "开发一个古建筑木结构榫卯构件测绘前端项目，测绘人员可以录入建筑名称、构件编号、木材种类、榫卯类型、截面尺寸、病害位置、变形情况和修缮建议。页面需要有构件清单、榫卯类型筛选、尺寸记录表、病害标记图和单栋建筑的构件关系视图。",
-  "palette": [
-    "#854d0e",
-    "#475569",
-    "#0f766e"
-  ],
-  "metrics": [
-    "构件数量",
-    "病害点",
-    "榫卯类型",
-    "待修缮"
-  ],
-  "filters": [
-    "燕尾榫",
-    "透榫",
-    "半榫",
-    "箍头榫"
-  ],
-  "fields": [
-    "建筑名称",
-    "构件编号",
-    "木材种类",
-    "榫卯类型",
-    "截面尺寸",
-    "修缮建议"
-  ],
-  "records": [
-    [
-      "梁架A-03",
-      "透榫",
-      "截面180x240mm",
-      "端部开裂"
-    ],
-    [
-      "柱网C-12",
-      "楠木",
-      "柱脚糟朽",
-      "建议局部墩接"
-    ],
-    [
-      "斗拱D-07",
-      "半榫",
-      "轻微变形",
-      "继续监测"
-    ]
-  ]
-};
+const NAV: { key: ViewKey; label: string; desc: string }[] = [
+  { key: "list", label: "构件清单", desc: "测绘字段 / 病害" },
+  { key: "register", label: "施药登记", desc: "药剂·仓压·入罩" },
+  { key: "queue", label: "隔离队列", desc: "24h×2 复检放行" },
+  { key: "ledger", label: "批次台账", desc: "留痕·旧批只读" },
+  { key: "graph", label: "关系图", desc: "建筑-构件-仓罩" },
+];
 
-function App() {
+function Shell() {
+  const {
+    view,
+    setView,
+    state,
+    now,
+    toasts,
+    dismissToast,
+    resetDemo,
+    queueRows,
+    componentPhase,
+  } = useStation();
+
+  const queue = queueRows();
+  const occupied = queue.length;
+  const rejected = state.batches.filter((b) => b.status === "rejected").length;
+  const released = state.batches.filter((b) => b.status === "released").length;
+  const invalidated = state.batches.filter((b) => b.status === "invalidated").length;
+  const activeComponents = state.components.filter(
+    (c) => componentPhase(c.id) === "fumigating" ||
+      componentPhase(c.id) === "await-recheck" ||
+      componentPhase(c.id) === "await-second",
+  ).length;
+
+  const metrics = [
+    { label: "在册构件", value: state.components.length },
+    { label: "隔离熏蒸中", value: activeComponents },
+    { label: "占用仓罩", value: `${occupied}/${state.tents.length}` },
+    { label: "已放行", value: released },
+    { label: "整批拒绝", value: rejected },
+    { label: "失效重算", value: invalidated },
+  ];
+
+  const clock = new Date(now);
+  const pad = (n: number) => String(n).padStart(2, "0");
+
   return (
     <main className="app">
-      <section className="hero">
-        <p>{project.id} · 源提示词{project.sourceNo} · Port {project.port}</p>
-        <h1>{project.title}</h1>
-        <span>{project.prompt}</span>
+      <section className="hero station-hero">
+        <p>古建筑木结构 · 白蚁熏蒸隔离与复位放行台</p>
+        <h1>榫卯构件白蚁熏蒸台</h1>
+        <span>
+          同一仓罩处理中仅接一批，重复登记沿用首批；登记药剂批次、浓度、仓压与施药人，
+          药剂过期或仓压不足整批拒绝。熏蒸后由非施药人隔 24 小时复检两次，蛀屑无新增且浓度回落方可复位；
+          处理期间改动截面尺寸、病害或换件，原放行失效重算，旧批只读封存。
+        </span>
+        <div className="hero-clock">
+          台账时钟 {clock.getFullYear()}-{pad(clock.getMonth() + 1)}-{pad(clock.getDate())}{" "}
+          {pad(clock.getHours())}:{pad(clock.getMinutes())}
+          <button onClick={resetDemo} className="ghost">重置为演示台账</button>
+        </div>
       </section>
 
-      <section className="metrics">
-        {project.metrics.map((metric: string, index: number) => (
-          <article key={metric}>
-            <small>{metric}</small>
-            <strong>{[28, 6, 14, 91][index] ?? 10}</strong>
+      <section className="metrics metrics-6">
+        {metrics.map((m) => (
+          <article key={m.label}>
+            <small>{m.label}</small>
+            <strong>{m.value}</strong>
           </article>
         ))}
       </section>
 
-      <section className="workspace">
-        <aside className="panel">
-          <h2>{project.domain}分类</h2>
-          <div className="chips">
-            {project.filters.map((item: string) => (
-              <button key={item}>{item}</button>
-            ))}
-          </div>
-        </aside>
+      <nav className="main-nav">
+        {NAV.map((n) => (
+          <button
+            key={n.key}
+            className={"nav-item" + (view === n.key ? " nav-on" : "")}
+            onClick={() => setView(n.key)}
+          >
+            <b>{n.label}</b>
+            <small>{n.desc}</small>
+          </button>
+        ))}
+      </nav>
 
-        <section className="panel form-panel">
-          <div className="heading">
-            <div>
-              <p>专业字段</p>
-              <h2>新增记录</h2>
-            </div>
-            <button className="primary">保存记录</button>
-          </div>
-          <div className="field-grid">
-            {project.fields.map((field: string) => (
-              <label key={field}>
-                <span>{field}</span>
-                <input placeholder={"填写" + field} />
-              </label>
-            ))}
-          </div>
-        </section>
+      <section className="stage">
+        {view === "list" && <ComponentList />}
+        {view === "register" && <RegisterView />}
+        {view === "queue" && <QueueView />}
+        {view === "ledger" && <LedgerView />}
+        {view === "graph" && <GraphView />}
       </section>
 
-      <section className="panel">
-        <div className="heading">
-          <div>
-            <p>近期记录</p>
-            <h2>工作台摘要</h2>
+      <footer className="foot">
+        判定规则、批次账、界面状态分置 <code>src/fumigation/rules.ts</code>、
+        <code>ledger.ts</code>、<code>station.tsx</code>；数据持久化于浏览器本地，刷新后清单 / 隔离队列 / 关系图一致。
+      </footer>
+
+      <div className="toast-stack">
+        {toasts.map((t) => (
+          <div key={t.id} className={"toast toast-" + t.level} onClick={() => dismissToast(t.id)}>
+            {t.text}
           </div>
-          <button>导出CSV</button>
-        </div>
-        <div className="records">
-          {project.records.map((record: string[], index: number) => (
-            <article key={record.join("-")}>
-              <b>{String(index + 1).padStart(2, "0")}</b>
-              <div>
-                <h3>{record[0]}</h3>
-                <p>{record.slice(1).join(" · ")}</p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+        ))}
+      </div>
     </main>
+  );
+}
+
+function App() {
+  return (
+    <StationProvider>
+      <Shell />
+    </StationProvider>
   );
 }
 
